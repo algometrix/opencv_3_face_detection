@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import cv2, os, sys
+import cv2, os, sys, platform
 import numpy as np
 from PIL import Image
 
@@ -76,6 +76,11 @@ class ActorRecognition():
         Returns:
             [string] -- Folder name 
         """
+        has_windows = True if platform.system() == 'Windows' else False
+        if has_windows:
+            delimiter = '//'
+        else:
+            delimiter = '\'
         full_path = full_path[:-1] if full_path.endswith('/') else full_path
         last_occurance = full_path.rfind('/')
         return full_path[ last_occurance+1 : ]
@@ -164,8 +169,8 @@ class ActorRecognition():
 
 
 if __name__ == '__main__':
-    training_data_path = '/Users/ashishnagar/Downloads/Google Images' #sys.argv[1]
-    test_data_path = '/Users/ashishnagar/Downloads' #sys.argv[2]
+    training_data_path = sys.argv[1]
+    test_data_path = sys.argv[2]
     ob = ActorRecognition(training_data_path,test_data_path)
     ob.train_model(show_images = True)
-    ob.play_video_in_cv2(test_data_path + '/Nicole.mp4')
+    ob.play_video_in_cv2(test_data_path)
