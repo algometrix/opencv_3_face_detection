@@ -6,6 +6,16 @@ from PIL import Image
 
 class ActorRecognition():
     def __init__(self, training_path, test_path, **kwargs):
+        """Constructor for ActorRecognition
+        
+        Arguments:
+            training_path {string}      --      Path of the training data. 
+                                                Should contain folders with name 
+                                                of the actor containing images of the actor
+
+            test_path {string}          --      Full path of the test video path
+            **kwargs {named arguments}  --      Named arguments for later use. NOT USED YET
+        """
         self.cascade_path = "haarcascade_frontalface_default.xml"
         self.face_cascade = cv2.CascadeClassifier(self.cascade_path)
         self.recognizer = cv2.face.createLBPHFaceRecognizer()
@@ -19,7 +29,7 @@ class ActorRecognition():
         """ Predict the face
         
         Arguments:
-            face_image {Numpy Array} -- Grayscaled image of just the face
+            face_image {Numpy Array} -- Grayscaled image of just the face. Detect face before passing image to the function
         """
         predict_image = np.array(face_image, 'uint8')
         faces = faceCascade.detectMultiScale(predict_image)
@@ -28,6 +38,11 @@ class ActorRecognition():
             print("Predicted : %d" % nbr_predicted)
 
     def map_images_to_labels(self):
+        """Map numeric label for all the folders
+        
+        Returns:
+            list -- Nested list contains folder name and the label  
+        """
         folders = ActorRecognition.get_folder_contents(self.images_path)
         self.label_generator_for_folders(self.images_path)
         image_labels = []
@@ -44,15 +59,36 @@ class ActorRecognition():
 
     @staticmethod
     def get_folder_contents(path):
+        """ Returns folder contents
+        
+        Arguments:
+            path {string} -- Full path of the filder
+        """
         return [os.path.join(path, f) for f in os.listdir(path) if not f.startswith('.')]
     
     @staticmethod
     def get_folder_name_from_full_path(full_path):
+        """Get folder name from the full path
+        
+        Arguments:
+            full_path {string} -- Full path of the folder
+        
+        Returns:
+            [string] -- Folder name 
+        """
         full_path = full_path[:-1] if full_path.endswith('/') else full_path
         last_occurance = full_path.rfind('/')
         return full_path[ last_occurance+1 : ]
     
     def label_generator_for_folders(self, path):
+        """Generate label for the folders
+        
+        Arguments:
+            path {string} -- Full path of the folder
+        
+        Returns:
+            dict -- Dict containg the labels
+        """
         folder_label_dict = dict()
         folders = ActorRecognition.get_folder_contents(path)
         for index, folder in enumerate(folders):
@@ -62,8 +98,12 @@ class ActorRecognition():
         return folder_label_dict
 
     def train_model(self, show_images = False):
+        """Train model for the actor face recognition
+        
+        Keyword Arguments:
+            show_images {boolean} -- Whether to show the images when training the model (default: {False})
+        """
         training_data = self.map_images_to_labels()
-        #image_full_paths, labels = zip(*training_data)
         images = []
         labels = []
         for image_path,label in training_data:
@@ -77,17 +117,25 @@ class ActorRecognition():
             for (x, y, w, h) in faces:
                 images.append(image[y: y + h, x: x + w])
                 labels.append(label)
-                #cv2.rectangle(image, (x,y), (x+w,y+h),(0,255,0),2)
+                cv2.rectangle(image, (x,y), (x+w,y+h),(0,255,0),2)
         
             name = [ name for name in self.image_label_dict if self.image_label_dict[name] == label ]
-            #cv2.imshow("%s" % name[0], image)
-            #cv2.waitKey(1)
+            cv2.imshow("%s" % name[0], image)
+            cv2.waitKey(1)
 
             
         cv2.destroyAllWindows()
         self.recognizer.train(images, np.array(labels))
     
     def play_video_in_cv2(self,video_path, highlight_faces = True):
+        """Play test video and predict face
+        
+        Arguments:
+            video_path {string} -- 
+        
+        Keyword Arguments:
+            highlight_faces {boolean} -- [description] (default: {True})
+        """
         print("Video Path : %s" % video_path)
         vc = cv2.VideoCapture(video_path)
         fps = vc.get(cv2.CAP_PROP_FPS)
@@ -116,8 +164,8 @@ class ActorRecognition():
 
 
 if __name__ == '__main__':
-    training_data_path = sys.argv[1]
-    test_data_path = sys.argv[2]
+    training_data_path = '/Users/ashishnagar/Downloads/Google Images' #sys.argv[1]
+    test_data_path = '/Users/ashishnagar/Downloads' #sys.argv[2]
     ob = ActorRecognition(training_data_path,test_data_path)
     ob.train_model(show_images = True)
-    ob.play_video_in_cv2(test_data_path)
+    ob.play_video_in_cv2(test_data_path + '/Nicole.mp4')
