@@ -78,9 +78,9 @@ class ActorRecognition():
         """
         has_windows = True if platform.system() == 'Windows' else False
         if has_windows:
-            delimiter = '//'
+            delimiter = '\\'
         else:
-            delimiter = '\'
+            delimiter = '/'
         full_path = full_path[:-1] if full_path.endswith('/') else full_path
         last_occurance = full_path.rfind('/')
         return full_path[ last_occurance+1 : ]
@@ -169,8 +169,8 @@ class ActorRecognition():
 
 
 if __name__ == '__main__':
-    training_data_path = sys.argv[1]
-    test_data_path = sys.argv[2]
+    training_data_path = r'E:\Downloads\NewFolder\BabeSource' #sys.argv[1]
+    test_data_path = training_data_path #sys.argv[2]
     ob = ActorRecognition(training_data_path,test_data_path)
     ob.train_model(show_images = True)
-    ob.play_video_in_cv2(test_data_path)
+    #ob.play_video_in_cv2(test_data_path)
