@@ -29,5 +29,5 @@ def resize_in_all_sub_folders(path):
         print("Resizing for Folder : %s" % folder)
         resize_image_in_folder_to_percent(folder, 'jpg', 30)
 
-path = r'E:\Downloads\NewFolder\BabeSource'
+path = ''
 resize_in_all_sub_folders(path)
