@@ -81,8 +81,8 @@ class ActorRecognition():
             delimiter = '\\'
         else:
             delimiter = '/'
-        full_path = full_path[:-1] if full_path.endswith('/') else full_path
-        last_occurance = full_path.rfind('/')
+        full_path = full_path[:-1] if full_path.endswith(delimiter) else full_path
+        last_occurance = full_path.rfind(delimiter)
         return full_path[ last_occurance+1 : ]
     
     def label_generator_for_folders(self, path):
@@ -108,9 +108,12 @@ class ActorRecognition():
         Keyword Arguments:
             show_images {boolean} -- Whether to show the images when training the model (default: {False})
         """
+        print("Training Started")
         training_data = self.map_images_to_labels()
         images = []
         labels = []
+        length = len(training_data)
+        index = 0
         for image_path,label in training_data:
             try:
                 image_pil = Image.open(image_path).convert('L')
@@ -122,15 +125,20 @@ class ActorRecognition():
             for (x, y, w, h) in faces:
                 images.append(image[y: y + h, x: x + w])
                 labels.append(label)
-                cv2.rectangle(image, (x,y), (x+w,y+h),(0,255,0),2)
+                if show_images:
+                    cv2.rectangle(image, (x,y), (x+w,y+h),(0,255,0),2)
         
-            name = [ name for name in self.image_label_dict if self.image_label_dict[name] == label ]
-            cv2.imshow("%s" % name[0], image)
-            cv2.waitKey(1)
+            index = index + 1
+            print("%d Complete..." % int(index*100/length) )
+            if show_images:
+                cv2.imshow("%s" % name[0], image)
+                if cv2.waitKey(1) != -1:
+                    cv2.destroyAllWindows()
 
-            
-        cv2.destroyAllWindows()
+        if show_images:
+            cv2.destroyAllWindows()
         self.recognizer.train(images, np.array(labels))
+        print("Training Finished")
     
     def play_video_in_cv2(self,video_path, highlight_faces = True):
         """Play test video and predict face
@@ -169,8 +177,8 @@ class ActorRecognition():
 
 
 if __name__ == '__main__':
-    training_data_path = r'E:\Downloads\NewFolder\BabeSource' #sys.argv[1]
-    test_data_path = training_data_path #sys.argv[2]
+    training_data_path =sys.argv[1]
+    test_data_path = sys.argv[2]
     ob = ActorRecognition(training_data_path,test_data_path)
-    ob.train_model(show_images = True)
-    #ob.play_video_in_cv2(test_data_path)
+    ob.train_model(show_images = False)
+    ob.play_video_in_cv2(test_data_path)
