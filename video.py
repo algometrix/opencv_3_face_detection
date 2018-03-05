@@ -1,7 +1,7 @@
 from video_thread import VideoCaptureThread
 import cv2, time
 
-video_player = VideoCaptureThread(r"F:\Holding\New Folder\Pending\naughtyamerica.17.12.25.kayla.kayden.4k.mp4", 1)
+video_player = VideoCaptureThread(r"", 1)
 video_player.start()
 success, read = video_player.play_video()
 while success:
