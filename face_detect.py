@@ -11,6 +11,7 @@ import cv2
 import argparse
 import time
 import sys
+from video_thread import VideoCaptureThread
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -40,7 +41,7 @@ class FaceRecognizer():
     
     def train(self, n_neighbors = None, knn_algo = 'ball_tree', 
             image_face_only = False, sample_size = 200, image_store = 'pickled_images.model', 
-            load_saved_images = False, delete_missing_files = False, save_steps = 100):
+            load_saved_images = False, delete_missing_files = False, save_steps = 500, update_training_data = False):
         
         X = []
         y = []
@@ -58,59 +59,59 @@ class FaceRecognizer():
             if path.exists(image_store):
                 self.exit_program("Please remove the existing image store and run the program again. Check in place to prevent accidental image store overwrites", 1)
 
-
-        for class_dir in listdir(train_dir):
-            print("Training for %s" % class_dir)            
-            if not isdir(join(train_dir, class_dir)):
-                continue
-
-            image_list = image_files_in_folder(join(train_dir, class_dir))
-            pre_loaded_image_data = [ [index,image] for index,image in enumerate(traversed_images) if y[index] == class_dir ]
-            if len(pre_loaded_image_data) != len(image_list):
-                if load_saved_images and delete_missing_files:    
-                    shifter = 0
-                    image_name_list = [ path.split(name)[1] for name in image_list ]
-                    for data in pre_loaded_image_data:
-                        if data[1] not in image_name_list:
-                            print("Image Not Found : %s at index %d" % (data[1],data[0]))
-                            print("Deleting from image store...")
-                            traversed_images.pop(data[0] - shifter)
-                            X.pop(data[0] - shifter)
-                            y.pop(data[0] - shifter)
-                            shifter = shifter + 1               
-                
-                    self.save_image_store(X, y, traversed_images, image_store)
-                    
-            for img_path in image_list:
-                try:
-                    image_name = path.split(img_path)[1]
-                    if image_name in traversed_images:
-                        continue
-                    image = face_recognition.load_image_file(img_path)
-                    if not image_face_only:
-                        faces_bboxes = face_locations(image)
-                        if len(faces_bboxes) != 1:
-                            remove(img_path)
-                            print("image {} not fit for training: {}".format(img_path, "didn't find a face" if len(faces_bboxes) < 1 else "found more than one face"))
-                            continue
-
-                        X.append(face_recognition.face_encodings(image, known_face_locations=faces_bboxes)[0])
-                    
-                    else:
-                        face_box = image.shape
-                        box = [( 0, face_box[0], face_box[1], 0 )]
-                        X.append(face_recognition.face_encodings(image, known_face_locations = box )[0])
-
-                    y.append(class_dir)
-                    traversed_images.append(image_name)
-                    if image_data_save_steps == 0:
-                        self.save_image_store(X, y, traversed_images, image_store)
-                        image_data_save_steps = save_steps
-                    else:
-                        image_data_save_steps = image_data_save_steps - 1
-
-                except Exception:
+        if update_training_data:
+            for class_dir in listdir(train_dir):
+                print("Training for %s" % class_dir)            
+                if not isdir(join(train_dir, class_dir)):
                     continue
+
+                image_list = image_files_in_folder(join(train_dir, class_dir))
+                pre_loaded_image_data = [ [index,image] for index,image in enumerate(traversed_images) if y[index] == class_dir ]
+                if len(pre_loaded_image_data) != len(image_list):
+                    if load_saved_images and delete_missing_files:    
+                        shifter = 0
+                        image_name_list = [ path.split(name)[1] for name in image_list ]
+                        for data in pre_loaded_image_data:
+                            if data[1] not in image_name_list:
+                                print("Image Not Found : %s at index %d" % (data[1],data[0]))
+                                print("Deleting from image store...")
+                                traversed_images.pop(data[0] - shifter)
+                                X.pop(data[0] - shifter)
+                                y.pop(data[0] - shifter)
+                                shifter = shifter + 1               
+                    
+                        self.save_image_store(X, y, traversed_images, image_store)
+                        
+                for img_path in image_list:
+                    try:
+                        image_name = path.split(img_path)[1]
+                        if image_name in traversed_images:
+                            continue
+                        image = face_recognition.load_image_file(img_path)
+                        if not image_face_only:
+                            faces_bboxes = face_locations(image)
+                            if len(faces_bboxes) != 1:
+                                remove(img_path)
+                                print("image {} not fit for training: {}".format(img_path, "didn't find a face" if len(faces_bboxes) < 1 else "found more than one face"))
+                                continue
+
+                            X.append(face_recognition.face_encodings(image, known_face_locations=faces_bboxes)[0])
+                        
+                        else:
+                            face_box = image.shape
+                            box = [( 0, face_box[0], face_box[1], 0 )]
+                            X.append(face_recognition.face_encodings(image, known_face_locations = box )[0])
+
+                        y.append(class_dir)
+                        traversed_images.append(image_name)
+                        if image_data_save_steps == 0:
+                            self.save_image_store(X, y, traversed_images, image_store)
+                            image_data_save_steps = save_steps
+                        else:
+                            image_data_save_steps = image_data_save_steps - 1
+
+                    except Exception:
+                        continue
                 
         if n_neighbors is None:
             n_neighbors = int(round(sqrt(len(X))))
@@ -158,37 +159,24 @@ class FaceRecognizer():
         is_recognized = [closest_distances[0][i][0] <= DIST_THRESH for i in range(len(X_faces_loc))]
         # predict classes and cull classifications that are not with high confidence
         result = [(pred, loc) if rec else ("N/A", loc) for pred, loc, rec in zip(knn_clf.predict(faces_encodings), X_faces_loc, is_recognized)]
-        if False and save_test_image:
-            b = X_faces_loc[0]
-            pred_name = 'unknown' if result[0][0] == 'N/A' else result[0][0]
-            test_file_name = pred_name + '_' + file_suffix + '.jpg'
-            directory = path.join(self._test_image_store_location, pred_name)
-            test_file_full_path = join(self._test_image_store_location, test_file_name)
-            if not path.exists(directory):
-                makedirs(directory)
-            cv2.imwrite(test_file_full_path, read[ b[0]:b[2], b[3]:b[1]] )
-
         return result
 
     def predict_in_video(self, video_path, show_video = True, frame_skip_number = 50.0, save_test_frame = False, highlight_face = False ):
         print("Video Path : %s" % video_path)
         temp_file = self._temp_file
         video_filename = path.split(video_path)[1]
-        vc = cv2.VideoCapture(video_path)
-        fps = vc.get(cv2.CAP_PROP_FPS)
-        size = (int(vc.get(cv2.CAP_PROP_FRAME_WIDTH)), int(vc.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-        success, read = vc.read()
+        video_player = VideoCaptureThread(video_path, frame_skip_number)
+        video_player.start()
+        success, read = video_player.play_video()
         frame = 0
-        count = 0
         while success:
-            success, read = vc.read()
-            frame = frame + frame_skip_number
-            vc.set(cv2.CAP_PROP_POS_FRAMES, frame )
+            success, read = video_player.play_video()
             if not cv2.imwrite(temp_file, read):
                 continue
-            preds = self.predict(temp_file, save_test_image = save_test_frame, 
-                                    file_suffix = video_filename + '_frame_' + str(int(frame)) )
+            
+            preds = self.predict(temp_file, save_test_image = save_test_frame, file_suffix = video_filename + '_frame_' + str(int(frame)) )
            
+            frame = frame + frame_skip_number
             if len(preds) > 0:
                 if save_test_frame:
                     for pred in preds:
@@ -207,12 +195,10 @@ class FaceRecognizer():
                             cv2.putText(read, pred_name, (face_loc[3], face_loc[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
                             cv2.rectangle(read, (face_loc[3],face_loc[0]), (face_loc[1],face_loc[2]),(0,255,0),2)
 
-                    
             if show_video:
                 res = cv2.resize(read,None,fx=1.0, fy=1.0, interpolation = cv2.INTER_CUBIC)
-                cv2.imshow("Video", res)
+                cv2.imshow("Video", read)
             if cv2.waitKey(1) != -1:
-                vc.release()
                 cv2.destroyAllWindows()
                 return
 
@@ -231,8 +217,8 @@ if __name__ == '__main__':
     model_path = face_args.model_path
 
     ob = FaceRecognizer(training_dir = train_dir, test_image_store_location = test_dir, model_path = 'new_recog.model')
-    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False)
+    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = True)
     ob.load_predictor(knn_clf = clf)
-    ob.predict_in_video(video_path, show_video = True, frame_skip_number = 100.0, save_test_frame = True, highlight_face = True)
+    ob.predict_in_video(video_path, show_video = False, frame_skip_number = 100.0, save_test_frame = True, highlight_face = True)
     #preds = ob.predict(r"")
     #print(preds)
