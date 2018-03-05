@@ -12,6 +12,7 @@ import argparse
 import time
 import sys
 from video_thread import VideoCaptureThread
+import operator
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -24,7 +25,7 @@ class FaceRecognizer():
         self._temp_file = 'temp.jpg'
         self._image_data = None
         self._test_image_store_location = test_image_store_location
-
+        self._occurance_in_video = dict()
     
     def exit_program(self, message, error_code):
         print(message)
@@ -143,7 +144,7 @@ class FaceRecognizer():
             with open(model_save_path, 'rb') as f:
                 knn_clf = pickle.load(f)
     
-    def predict(self, X_img_path, DIST_THRESH = .5, save_test_image = False, file_suffix = ''):
+    def predict(self, X_img_path, DIST_THRESH = .5):
         
         if not isfile(X_img_path) or splitext(X_img_path)[1][1:] not in ALLOWED_EXTENSIONS:
             raise Exception("invalid image path: {}".format(X_img_path))
@@ -161,7 +162,21 @@ class FaceRecognizer():
         result = [(pred, loc) if rec else ("N/A", loc) for pred, loc, rec in zip(knn_clf.predict(faces_encodings), X_faces_loc, is_recognized)]
         return result
 
-    def predict_in_video(self, video_path, show_video = True, frame_skip_number = 50.0, save_test_frame = False, highlight_face = False ):
+       
+    def video_occurance_count(self, name, ignore = 'ignore'):
+        if name == ignore:
+            return
+        try:
+            self._occurance_in_video[name] = self._occurance_in_video[name] + 1
+        except Exception:
+            self._occurance_in_video[name] = 1
+    
+    def get_highest_occurance_count_in_video(self):
+        return max(self._occurance_in_video, key=self._occurance_in_video.get) 
+    
+    def predict_in_video(self, video_path, show_video = True, frame_skip_number = 50.0, 
+                            save_test_frame = False, highlight_face = False ):
+
         print("Video Path : %s" % video_path)
         temp_file = self._temp_file
         video_filename = path.split(video_path)[1]
@@ -171,16 +186,19 @@ class FaceRecognizer():
         frame = 0
         while success:
             success, read = video_player.play_video()
+            
             if not cv2.imwrite(temp_file, read):
                 continue
             
-            preds = self.predict(temp_file, save_test_image = save_test_frame, file_suffix = video_filename + '_frame_' + str(int(frame)) )
+            preds = self.predict(temp_file)
            
             frame = frame + frame_skip_number
             if len(preds) > 0:
                 if save_test_frame:
                     for pred in preds:
                         pred_name = 'unknown' if pred[0] == 'N/A' else pred[0]
+                        self.video_occurance_count(pred_name)
+                        print("Highest Count : %s " % self.get_highest_occurance_count_in_video())
                         print("Face detected : %s" % pred_name)
                         face_loc = pred[1]
                         test_file_name = pred_name + '_' + video_filename + '_frame_' + str(int(frame)) + '.jpg'
@@ -191,12 +209,12 @@ class FaceRecognizer():
                         
                         cv2.imwrite(test_file_full_path, read[ face_loc[0]:face_loc[2], face_loc[3]:face_loc[1]] )
 
-                        if highlight_face:
+                        if highlight_face and show_video:
                             cv2.putText(read, pred_name, (face_loc[3], face_loc[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
                             cv2.rectangle(read, (face_loc[3],face_loc[0]), (face_loc[1],face_loc[2]),(0,255,0),2)
 
             if show_video:
-                res = cv2.resize(read,None,fx=1.0, fy=1.0, interpolation = cv2.INTER_CUBIC)
+                #res = cv2.resize(read,None,fx=1.0, fy=1.0, interpolation = cv2.INTER_CUBIC)
                 cv2.imshow("Video", read)
             if cv2.waitKey(1) != -1:
                 cv2.destroyAllWindows()
@@ -217,8 +235,8 @@ if __name__ == '__main__':
     model_path = face_args.model_path
 
     ob = FaceRecognizer(training_dir = train_dir, test_image_store_location = test_dir, model_path = 'new_recog.model')
-    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = True)
+    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = False)
     ob.load_predictor(knn_clf = clf)
-    ob.predict_in_video(video_path, show_video = False, frame_skip_number = 100.0, save_test_frame = True, highlight_face = True)
+    ob.predict_in_video(video_path, show_video = False, frame_skip_number = 50.0, save_test_frame = True, highlight_face = False)
     #preds = ob.predict(r"")
     #print(preds)
