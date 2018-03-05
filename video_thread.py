@@ -41,18 +41,19 @@ class VideoCaptureThread(threading.Thread):
             if VideoCaptureThread.exit_flag:
                 return
             while len(self._read_queue) == self._buffer_size:
-                print("Buffer is full...")
-            #vc.set(cv2.CAP_PROP_POS_FRAMES, frame )
+                pass
+            vc.set(cv2.CAP_PROP_POS_FRAMES, frame )
             frame = frame + self._frame_skip
             success, read = vc.read()
             self._last_read = success, read
             self._read_started = True
-            print("Reading Frame : %d" % frame)
             self._read_queue.append([success, read])
+
+        VideoCaptureThread.exit_flag = True
     
     def play_video(self):
         while len(self._read_queue) == 0:
-            print("No frames in buffer") 
+            pass
         success, read = self._read_queue.pop(0)
         if VideoCaptureThread.exit_flag:
             return (False, 0)

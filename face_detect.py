@@ -235,8 +235,8 @@ if __name__ == '__main__':
     model_path = face_args.model_path
 
     ob = FaceRecognizer(training_dir = train_dir, test_image_store_location = test_dir, model_path = 'new_recog.model')
-    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = False)
+    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = True)
     ob.load_predictor(knn_clf = clf)
-    ob.predict_in_video(video_path, show_video = False, frame_skip_number = 50.0, save_test_frame = True, highlight_face = False)
+    ob.predict_in_video(video_path, show_video = True, frame_skip_number = 10.0, save_test_frame = True, highlight_face = True)
     #preds = ob.predict(r"")
     #print(preds)
