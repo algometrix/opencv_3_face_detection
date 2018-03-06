@@ -156,7 +156,7 @@ class FaceRecognizer():
         # gray_image[y: y + h, x: x + w] 
 
         try:
-            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 10, minSize = (80,80))
+            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 15, minSize = (80,80))
         except Exception:
             return []
         for (x,y,w,h) in faces:
@@ -218,7 +218,6 @@ class FaceRecognizer():
         success, read = video_player.play_video()
         frame = 0
         while success:
-            success, read = video_player.play_video()
             #if not cv2.imwrite(temp_file, read):
             #    continue
             
@@ -244,6 +243,8 @@ class FaceRecognizer():
                             cv2.putText(read, pred_name, (face_loc[3], face_loc[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
                             cv2.rectangle(read, (face_loc[3],face_loc[0]), (face_loc[1],face_loc[2]),(0,255,0),2)
 
+            success, read = video_player.play_video()
+
             if show_video:
                 cv2.imshow("Video", read)
                 if cv2.waitKey(5) != -1:
@@ -265,9 +266,9 @@ if __name__ == '__main__':
     model_path = face_args.model_path
 
     ob = FaceRecognizer(training_dir = train_dir, test_image_store_location = test_dir, model_path = 'new_recog.model')
-    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = False)
+    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = True, update_training_data = True)
     ob.load_predictor(knn_clf = clf)
-    ob.predict_in_video(video_path, show_video = True, frame_skip_number = 100.0, save_test_frame = True, 
+    ob.predict_in_video(video_path, show_video = False, frame_skip_number = 20.0, save_test_frame = True, 
                             highlight_face = True, scale_to = 1080)
     #preds = ob.predict(r"")
     #print(preds)
