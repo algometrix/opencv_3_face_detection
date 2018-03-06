@@ -26,6 +26,9 @@ class FaceRecognizer():
         self._image_data = None
         self._test_image_store_location = test_image_store_location
         self._occurance_in_video = dict()
+        self.cascade_path = "haarcascade_frontalface_default.xml"
+        self.face_cascade = cv2.CascadeClassifier(self.cascade_path)
+        
     
     def exit_program(self, message, error_code):
         print(message)
@@ -144,7 +147,33 @@ class FaceRecognizer():
             with open(model_save_path, 'rb') as f:
                 knn_clf = pickle.load(f)
     
-    def predict(self, X_img_path, DIST_THRESH = .5):
+    def predict_from_cv_read(self, image, DIST_THRESH = .5):
+        
+        X_img = image
+        X_faces_loc = []
+
+        # image[ b[0]:b[2], b[3]:b[1]]) 
+        # gray_image[y: y + h, x: x + w] 
+
+        try:
+            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 10, minSize = (80,80))
+        except Exception:
+            return []
+        for (x,y,w,h) in faces:
+            X_faces_loc.append([ y, x+w, y+h, x ])    
+      
+        if len(X_faces_loc) == 0:
+            return []
+
+        knn_clf = self._predictor
+        faces_encodings = face_recognition.face_encodings(X_img, known_face_locations=X_faces_loc)
+        closest_distances = knn_clf.kneighbors(faces_encodings, n_neighbors=1)
+        is_recognized = [closest_distances[0][i][0] <= DIST_THRESH for i in range(len(X_faces_loc))]
+        # predict classes and cull classifications that are not with high confidence
+        result = [(pred, loc) if rec else ("N/A", loc) for pred, loc, rec in zip(knn_clf.predict(faces_encodings), X_faces_loc, is_recognized)]
+        return result
+    
+    def predict_from_file(self, X_img_path, DIST_THRESH = .5):
         
         if not isfile(X_img_path) or splitext(X_img_path)[1][1:] not in ALLOWED_EXTENSIONS:
             raise Exception("invalid image path: {}".format(X_img_path))
@@ -164,7 +193,7 @@ class FaceRecognizer():
 
        
     def video_occurance_count(self, name, ignore = 'ignore'):
-        if name == ignore:
+        if name == ignore or name == 'unknown':
             return
         try:
             self._occurance_in_video[name] = self._occurance_in_video[name] + 1
@@ -172,34 +201,36 @@ class FaceRecognizer():
             self._occurance_in_video[name] = 1
     
     def get_highest_occurance_count_in_video(self):
-        return max(self._occurance_in_video, key=self._occurance_in_video.get) 
+        try:
+            name = max(self._occurance_in_video, key=self._occurance_in_video.get) 
+        except Exception:
+            return 'None',0
+        return name, self._occurance_in_video[name]
     
     def predict_in_video(self, video_path, show_video = True, frame_skip_number = 50.0, 
-                            save_test_frame = False, highlight_face = False ):
+                            save_test_frame = False, highlight_face = False, scale_to = 0 ):
 
         print("Video Path : %s" % video_path)
         temp_file = self._temp_file
         video_filename = path.split(video_path)[1]
-        video_player = VideoCaptureThread(video_path, frame_skip_number)
+        video_player = VideoCaptureThread(video_path, frame_skip_number, size = scale_to)
         video_player.start()
         success, read = video_player.play_video()
         frame = 0
         while success:
             success, read = video_player.play_video()
+            #if not cv2.imwrite(temp_file, read):
+            #    continue
             
-            if not cv2.imwrite(temp_file, read):
-                continue
-            
-            preds = self.predict(temp_file)
-           
+            preds = self.predict_from_cv_read(read)
             frame = frame + frame_skip_number
             if len(preds) > 0:
                 if save_test_frame:
                     for pred in preds:
                         pred_name = 'unknown' if pred[0] == 'N/A' else pred[0]
                         self.video_occurance_count(pred_name)
-                        print("Highest Count : %s " % self.get_highest_occurance_count_in_video())
-                        print("Face detected : %s" % pred_name)
+                        ac_name, occurance = self.get_highest_occurance_count_in_video()
+                        print("Face detected\t: %20s\t\tHighest Count\t: %s (%d)" % (pred_name, ac_name, occurance ) )
                         face_loc = pred[1]
                         test_file_name = pred_name + '_' + video_filename + '_frame_' + str(int(frame)) + '.jpg'
                         directory = path.join(self._test_image_store_location, pred_name)
@@ -214,11 +245,10 @@ class FaceRecognizer():
                             cv2.rectangle(read, (face_loc[3],face_loc[0]), (face_loc[1],face_loc[2]),(0,255,0),2)
 
             if show_video:
-                #res = cv2.resize(read,None,fx=1.0, fy=1.0, interpolation = cv2.INTER_CUBIC)
                 cv2.imshow("Video", read)
-            if cv2.waitKey(1) != -1:
-                cv2.destroyAllWindows()
-                return
+                if cv2.waitKey(5) != -1:
+                    cv2.destroyAllWindows()
+                    return
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = 'Arguments for Face Recognition')
@@ -235,8 +265,9 @@ if __name__ == '__main__':
     model_path = face_args.model_path
 
     ob = FaceRecognizer(training_dir = train_dir, test_image_store_location = test_dir, model_path = 'new_recog.model')
-    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = True)
+    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = False, update_training_data = False)
     ob.load_predictor(knn_clf = clf)
-    ob.predict_in_video(video_path, show_video = True, frame_skip_number = 10.0, save_test_frame = True, highlight_face = True)
+    ob.predict_in_video(video_path, show_video = True, frame_skip_number = 100.0, save_test_frame = True, 
+                            highlight_face = True, scale_to = 1080)
     #preds = ob.predict(r"")
     #print(preds)
