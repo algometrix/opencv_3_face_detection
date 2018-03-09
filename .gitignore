@@ -102,3 +102,4 @@ ENV/
 *.yml
 .vscode/settings.json
 temp.jpg
+scraps.txt
