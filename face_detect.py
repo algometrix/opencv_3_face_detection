@@ -1,6 +1,6 @@
 from math import sqrt
 from sklearn import neighbors
-from os import listdir, remove, path, makedirs
+from os import listdir, remove, path, makedirs, rename
 from os.path import isdir, join, isfile, splitext
 import pickle
 from PIL import Image, ImageFont, ImageDraw, ImageEnhance
@@ -13,6 +13,8 @@ import time
 import sys
 from video_thread import VideoCaptureThread
 import operator
+import shutil
+
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -53,13 +55,17 @@ class FaceRecognizer():
         train_dir = self._training_dir
         model_save_path = self._model_path
         image_data_save_steps = save_steps
+
+        # Load pickled training data. Storing pickled training data save time by loading data instead of retraining classifier.
         if load_saved_images:
+            # If pickled file exists then load training data
             if path.exists(image_store):
                 with open(image_store, 'rb') as f:
                     X, y, traversed_images = pickle.load(f)
             else:
                 self.exit_program("Image store not found...", 1)
         else:
+            # If pickled data exists and load_saved_images = False then the pickled file will be overwitten. 
             if path.exists(image_store):
                 self.exit_program("Please remove the existing image store and run the program again. Check in place to prevent accidental image store overwrites", 1)
 
@@ -86,36 +92,36 @@ class FaceRecognizer():
                     
                         self.save_image_store(X, y, traversed_images, image_store)
                         
-                for img_path in image_list:
-                    try:
-                        image_name = path.split(img_path)[1]
-                        if image_name in traversed_images:
-                            continue
-                        image = face_recognition.load_image_file(img_path)
-                        if not image_face_only:
-                            faces_bboxes = face_locations(image)
-                            if len(faces_bboxes) != 1:
-                                remove(img_path)
-                                print("image {} not fit for training: {}".format(img_path, "didn't find a face" if len(faces_bboxes) < 1 else "found more than one face"))
+                    for img_path in image_list:
+                        try:
+                            image_name = path.split(img_path)[1]
+                            if image_name in traversed_images:
                                 continue
+                            image = face_recognition.load_image_file(img_path)
+                            if not image_face_only:
+                                faces_bboxes = face_locations(image)
+                                if len(faces_bboxes) != 1:
+                                    remove(img_path)
+                                    print("image {} not fit for training: {}".format(img_path, "didn't find a face" if len(faces_bboxes) < 1 else "found more than one face"))
+                                    continue
 
-                            X.append(face_recognition.face_encodings(image, known_face_locations=faces_bboxes)[0])
-                        
-                        else:
-                            face_box = image.shape
-                            box = [( 0, face_box[0], face_box[1], 0 )]
-                            X.append(face_recognition.face_encodings(image, known_face_locations = box )[0])
+                                X.append(face_recognition.face_encodings(image, known_face_locations=faces_bboxes)[0])
+                            
+                            else:
+                                face_box = image.shape
+                                box = [( 0, face_box[0], face_box[1], 0 )]
+                                X.append(face_recognition.face_encodings(image, known_face_locations = box )[0])
 
-                        y.append(class_dir)
-                        traversed_images.append(image_name)
-                        if image_data_save_steps == 0:
-                            self.save_image_store(X, y, traversed_images, image_store)
-                            image_data_save_steps = save_steps
-                        else:
-                            image_data_save_steps = image_data_save_steps - 1
+                            y.append(class_dir)
+                            traversed_images.append(image_name)
+                            if image_data_save_steps == 0:
+                                self.save_image_store(X, y, traversed_images, image_store)
+                                image_data_save_steps = save_steps
+                            else:
+                                image_data_save_steps = image_data_save_steps - 1
 
-                    except Exception:
-                        continue
+                        except Exception:
+                            continue
                 
         if n_neighbors is None:
             n_neighbors = int(round(sqrt(len(X))))
@@ -154,13 +160,15 @@ class FaceRecognizer():
 
         # image[ b[0]:b[2], b[3]:b[1]]) 
         # gray_image[y: y + h, x: x + w] 
-
+        X_faces_loc = face_locations(X_img)
+        '''
         try:
-            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 15, minSize = (80,80))
+            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 20, minSize = (80,80))
         except Exception:
             return []
         for (x,y,w,h) in faces:
             X_faces_loc.append([ y, x+w, y+h, x ])    
+        '''
       
         if len(X_faces_loc) == 0:
             return []
@@ -206,22 +214,34 @@ class FaceRecognizer():
         except Exception:
             return 'None',0
         return name, self._occurance_in_video[name]
+
+    def get_occurance_in_video(self):
+        return self._occurance_in_video
+
+    def reset_occurance(self):
+        self._occurance_in_video = dict()
     
     def predict_in_video(self, video_path, show_video = True, frame_skip_number = 50.0, 
-                            save_test_frame = False, highlight_face = False, scale_to = 0 ):
+                            save_test_frame = False, highlight_face = False, scaling = 0, callback = None ):
 
         print("Video Path : %s" % video_path)
+        if not path.exists(video_path):
+            return
         temp_file = self._temp_file
         video_filename = path.split(video_path)[1]
-        video_player = VideoCaptureThread(video_path, frame_skip_number, size = scale_to)
+        self.reset_occurance()
+        video_player = VideoCaptureThread(video_path, frame_skip_number, size = scaling)
         video_player.start()
-        success, read = video_player.play_video()
+        success, read, frame, buffer = video_player.play_video()
         frame = 0
+        time.sleep(5)
         while success:
-            #if not cv2.imwrite(temp_file, read):
-            #    continue
-            
+            '''
+            if not cv2.imwrite(self._temp_file, read):
+                continue
+            '''
             preds = self.predict_from_cv_read(read)
+            
             frame = frame + frame_skip_number
             if len(preds) > 0:
                 if save_test_frame:
@@ -233,23 +253,86 @@ class FaceRecognizer():
                         face_loc = pred[1]
                         test_file_name = pred_name + '_' + video_filename + '_frame_' + str(int(frame)) + '.jpg'
                         directory = path.join(self._test_image_store_location, pred_name)
-                        test_file_full_path = join(self._test_image_store_location,pred_name, test_file_name)
+                        test_file_full_path = join(self._test_image_store_location, test_file_name)
+                        
+                        '''
                         if not path.exists(directory):
                             makedirs(directory)
+                        '''
                         
-                        cv2.imwrite(test_file_full_path, read[ face_loc[0]:face_loc[2], face_loc[3]:face_loc[1]] )
+                        if pred_name != 'unknown' and pred_name != 'ignore':
+                            cv2.imwrite(test_file_full_path, read[ face_loc[0]:face_loc[2], face_loc[3]:face_loc[1]] )
 
-                        if highlight_face and show_video:
+                                          
+                        if highlight_face and show_video and (pred_name != 'unknown' and pred_name != 'ignore'):
                             cv2.putText(read, pred_name, (face_loc[3], face_loc[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
                             cv2.rectangle(read, (face_loc[3],face_loc[0]), (face_loc[1],face_loc[2]),(0,255,0),2)
 
-            success, read = video_player.play_video()
+                        if callback(ac_name, occurance, video_path):
+                            video_player.release_resource()
+                            video_player.end_process(None, None)
+                            video_player.join()
+                            folder, filename = path.split(video_path)
+                            folder_path, folder_name = path.split(folder)
+                            new_folder = path.join(folder, pred_name)
+                            new_file = path.join(new_folder, filename)
+                            print("Identified following in the video : %s" % filename )
+                            occ = self.get_occurance_in_video()
+                            for key in occ:
+                                print("Actor\t: %20s\t\tOccurance\t: %s" % (key, occ[key] ) )
+                            if not path.exists(new_folder):
+                                makedirs(new_folder)
+                            try:
+                                rename(video_path, new_file)
+                                print("INFO : File moved")
+                            except PermissionError:
+                                print("ERROR : File used by another process. Cannot move")
+                                
+                            return
+                        
+
+            
 
             if show_video:
+                cv2.putText(read, str(frame), (1,30), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
+                cv2.putText(read, str(buffer), (1,80), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
                 cv2.imshow("Video", read)
                 if cv2.waitKey(5) != -1:
                     cv2.destroyAllWindows()
                     return
+
+            success, read, frame, buffer = video_player.play_video()
+            #print("Frame : %d" % frame)
+            if frame > 30000:
+                print("DEBUG : Frame limit exceeded...")
+                break
+
+        try:
+            print("No name found...")
+            dest_folder = 'Unmarked'
+            video_player.release_resource()
+            video_player.end_process(None, None)
+            folder, filename = path.split(video_path)
+            dest_full_path = path.join(folder, dest_folder, filename)
+            print("INFO : Waiting for thread to end.")
+            video_player.join()
+            rename(video_path, dest_full_path)
+            print("INFO : File moved")
+        except PermissionError:
+            print("ERROR : File used by another process. Cannot move")
+
+
+def pred_callback(*args):
+    name, occurance, video_path = args
+    folder, filename = path.split(video_path)
+    folder_path, folder_name = path.split(folder)
+    
+    new_folder = path.join(folder, name)
+    new_file = path.join(new_folder, filename)
+    if occurance >= 5:
+        return True
+    else:
+        return False
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = 'Arguments for Face Recognition')
@@ -264,11 +347,26 @@ if __name__ == '__main__':
     test_dir = face_args.test_dir
     image_store = face_args.image_store
     model_path = face_args.model_path
-
+    update_data = False
+    show_video = False
+    frame_skip_number = 100.0
+    resolution = 1080
+    
     ob = FaceRecognizer(training_dir = train_dir, test_image_store_location = test_dir, model_path = 'new_recog.model')
-    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = True, update_training_data = True)
+    clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = update_data, update_training_data = update_data)
     ob.load_predictor(knn_clf = clf)
-    ob.predict_in_video(video_path, show_video = False, frame_skip_number = 20.0, save_test_frame = True, 
-                            highlight_face = True, scale_to = 1080)
-    #preds = ob.predict(r"")
-    #print(preds)
+    
+    
+    if isdir(video_path):
+        files = listdir(video_path)
+        for file in files:
+            video_file = path.join(video_path, file)
+            if isdir(video_file):
+                continue
+            ob.predict_in_video(video_file, show_video = show_video, frame_skip_number = frame_skip_number, save_test_frame = True, 
+                                highlight_face = True, scaling = resolution, callback = pred_callback) 
+    else:
+        frame_skip_number = 50
+        ob.predict_in_video(video_path, show_video = show_video, frame_skip_number = frame_skip_number, save_test_frame = True, 
+                            highlight_face = True, scaling = resolution, callback = pred_callback)
+    
