@@ -1,3 +1,4 @@
+@@ -1,105 +0,0 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -103,3 +104,4 @@ ENV/
 .vscode/settings.json
 temp.jpg
 scraps.txt
+*.model
