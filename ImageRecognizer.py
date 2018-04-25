@@ -97,6 +97,6 @@ class ImageRecog():
 
 print("Starting...")
 ob = ImageRecog(label_name='Actor')
-clf = ob.train(r"E:\Downloads\Training Stuff\Video Training\Nikki Daniels\Training")
-ob.cluster_prediction(clf, r"E:\Downloads\Training Stuff\Video Training\Nikki Daniels")
+clf = ob.train(r"E:\Downloads\Training Stuff\Video Training\Training")
+ob.cluster_prediction(clf, r"E:\Downloads\")
 
