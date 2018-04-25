@@ -12,7 +12,7 @@ import cv2
 import argparse
 import time
 import sys
-from video_thread import VideoCaptureThread
+import signal
 import operator
 import shutil
 import datetime
@@ -23,8 +23,8 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 pp = pprint.PrettyPrinter(indent=4)
 
-CHECK_THRESHOLD = 700000
-FRAME_LIMIT = 20000000
+CHECK_THRESHOLD = 100000
+FRAME_LIMIT = 2000000
 
 class FaceRecognizer():
     def __init__(self, training_dir = None, model_path = "", test_image_store_location = None):
@@ -170,7 +170,7 @@ class FaceRecognizer():
         #X_faces_loc = face_locations(X_img)
         
         try:
-            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 20, minSize = (60,60))
+            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 7, minSize = (60,60))
         except Exception:
             return []
         for (x,y,w,h) in faces:
@@ -357,6 +357,11 @@ def pred_callback(*args):
     else:
         return False
 
+
+def signal_handler(signal, frame):
+        print('You pressed Ctrl+C!')
+        sys.exit(0)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = 'Arguments for Face Recognition')
     parser.add_argument('--train_dir', action = 'store', dest = 'train_dir', required = True)
@@ -364,7 +369,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_dir', action = 'store', dest = 'test_dir', required = True)
     parser.add_argument('--image_store', action = 'store', dest = 'image_store', required = False)
     parser.add_argument('--model_path', action = 'store', dest = 'model_path', required = False)
-    parser.add_argument('--frame_skip', action = 'store', dest = 'frame_skip', required = False)
+    parser.add_argument('--frame_skip', action = 'store', dest = 'frame_skip', default = 50, required = False)
     parser.add_argument('--show_video', action = 'store', dest = 'show_video', default = 0, required = False)
     parser.add_argument('--update_data', action = 'store', dest = 'update_data', default = 0, required = False)
     face_args = parser.parse_args()

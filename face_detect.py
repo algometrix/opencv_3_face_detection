@@ -6,7 +6,8 @@ import pickle
 from PIL import Image, ImageFont, ImageDraw, ImageEnhance
 import face_recognition
 from face_recognition import face_locations
-from face_recognition.cli import image_files_in_folder
+from face_recognition.face_recognition_cli import image_files_in_folder
+#from face_recognition.cli import image_files_in_folder
 import cv2
 import argparse
 import time
@@ -14,10 +15,15 @@ import sys
 from video_thread import VideoCaptureThread
 import operator
 import shutil
-
+import datetime
+import pprint
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
+pp = pprint.PrettyPrinter(indent=4)
+
+CHECK_THRESHOLD = 700000
+FRAME_LIMIT = 20000000
 
 class FaceRecognizer():
     def __init__(self, training_dir = None, model_path = "", test_image_store_location = None):
@@ -160,24 +166,25 @@ class FaceRecognizer():
 
         # image[ b[0]:b[2], b[3]:b[1]]) 
         # gray_image[y: y + h, x: x + w] 
-        X_faces_loc = face_locations(X_img)
-        '''
+        #X_faces_loc = face_locations(X_img)
+        
         try:
-            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 20, minSize = (80,80))
+            faces = self.face_cascade.detectMultiScale(X_img, minNeighbors = 5, minSize = (60,60))
         except Exception:
             return []
         for (x,y,w,h) in faces:
             X_faces_loc.append([ y, x+w, y+h, x ])    
-        '''
+        
       
         if len(X_faces_loc) == 0:
             return []
 
         knn_clf = self._predictor
         faces_encodings = face_recognition.face_encodings(X_img, known_face_locations=X_faces_loc)
-        closest_distances = knn_clf.kneighbors(faces_encodings, n_neighbors=1)
+        closest_distances = knn_clf.kneighbors(faces_encodings, n_neighbors=10)
         is_recognized = [closest_distances[0][i][0] <= DIST_THRESH for i in range(len(X_faces_loc))]
         # predict classes and cull classifications that are not with high confidence
+     
         result = [(pred, loc) if rec else ("N/A", loc) for pred, loc, rec in zip(knn_clf.predict(faces_encodings), X_faces_loc, is_recognized)]
         return result
     
@@ -195,6 +202,7 @@ class FaceRecognizer():
         faces_encodings = face_recognition.face_encodings(X_img, known_face_locations=X_faces_loc)
         closest_distances = knn_clf.kneighbors(faces_encodings, n_neighbors=1)
         is_recognized = [closest_distances[0][i][0] <= DIST_THRESH for i in range(len(X_faces_loc))]
+     
         # predict classes and cull classifications that are not with high confidence
         result = [(pred, loc) if rec else ("N/A", loc) for pred, loc, rec in zip(knn_clf.predict(faces_encodings), X_faces_loc, is_recognized)]
         return result
@@ -221,10 +229,15 @@ class FaceRecognizer():
     def reset_occurance(self):
         self._occurance_in_video = dict()
     
+    
+    def get_occurance_sum(self):
+        return sum(self._occurance_in_video.values())
+    
     def predict_in_video(self, video_path, show_video = True, frame_skip_number = 50.0, 
-                            save_test_frame = False, highlight_face = False, scaling = 0, callback = None ):
+                            save_test_frame = False, highlight_face = False, scaling = 0, callback = None, move_file = True ):
 
-        print("Video Path : %s" % video_path)
+        print("INFO : Video Path : %s" % video_path)
+        print("INFO : Start Time : %s" % str(datetime.datetime.now()) )
         if not path.exists(video_path):
             return
         temp_file = self._temp_file
@@ -233,16 +246,10 @@ class FaceRecognizer():
         video_player = VideoCaptureThread(video_path, frame_skip_number, size = scaling)
         video_player.start()
         success, read, frame, buffer = video_player.play_video()
+        
         frame = 0
-        time.sleep(5)
         while success:
-            '''
-            if not cv2.imwrite(self._temp_file, read):
-                continue
-            '''
             preds = self.predict_from_cv_read(read)
-            
-            frame = frame + frame_skip_number
             if len(preds) > 0:
                 if save_test_frame:
                     for pred in preds:
@@ -254,12 +261,7 @@ class FaceRecognizer():
                         test_file_name = pred_name + '_' + video_filename + '_frame_' + str(int(frame)) + '.jpg'
                         directory = path.join(self._test_image_store_location, pred_name)
                         test_file_full_path = join(self._test_image_store_location, test_file_name)
-                        
-                        '''
-                        if not path.exists(directory):
-                            makedirs(directory)
-                        '''
-                        
+            
                         if pred_name != 'unknown' and pred_name != 'ignore':
                             cv2.imwrite(test_file_full_path, read[ face_loc[0]:face_loc[2], face_loc[3]:face_loc[1]] )
 
@@ -277,18 +279,27 @@ class FaceRecognizer():
                             new_folder = path.join(folder, pred_name)
                             new_file = path.join(new_folder, filename)
                             print("Identified following in the video : %s" % filename )
+                            occurance_sum = self.get_occurance_sum()
+                            percent = (CHECK_THRESHOLD*100.0/occurance_sum)
+                            print("PERCENTAGE : %0.2f" % percent)
                             occ = self.get_occurance_in_video()
-                            for key in occ:
+                            reverse_sorted = sorted(occ, key = occ.get, reverse=True)
+                            for key in reverse_sorted:
                                 print("Actor\t: %20s\t\tOccurance\t: %s" % (key, occ[key] ) )
-                            if not path.exists(new_folder):
-                                makedirs(new_folder)
-                            try:
-                                rename(video_path, new_file)
-                                print("INFO : File moved")
-                            except PermissionError:
-                                print("ERROR : File used by another process. Cannot move")
-                                
-                            return
+                            
+                            if percent > 20.0:
+                                if not path.exists(new_folder):
+                                    makedirs(new_folder)
+                                try:
+                                    if move_file:
+                                        rename(video_path, new_file)
+                                        print("INFO : File moved")
+                                except PermissionError:
+                                    print("ERROR : File used by another process. Cannot move")
+                                    
+                                return
+                            else:
+                                break
                         
 
             
@@ -302,8 +313,9 @@ class FaceRecognizer():
                     return
 
             success, read, frame, buffer = video_player.play_video()
+        
             #print("Frame : %d" % frame)
-            if frame > 30000:
+            if frame > FRAME_LIMIT:
                 print("DEBUG : Frame limit exceeded...")
                 break
 
@@ -316,10 +328,13 @@ class FaceRecognizer():
             dest_full_path = path.join(folder, dest_folder, filename)
             print("INFO : Waiting for thread to end.")
             video_player.join()
-            rename(video_path, dest_full_path)
-            print("INFO : File moved")
+            if move_file:
+                rename(video_path, dest_full_path)
+                print("INFO : File moved")
         except PermissionError:
             print("ERROR : File used by another process. Cannot move")
+        
+        print("INFO : End Time : %s" % str(datetime.datetime.now()) )
 
 
 def pred_callback(*args):
@@ -329,7 +344,7 @@ def pred_callback(*args):
     
     new_folder = path.join(folder, name)
     new_file = path.join(new_folder, filename)
-    if occurance >= 5:
+    if occurance >= CHECK_THRESHOLD:
         return True
     else:
         return False
@@ -341,16 +356,19 @@ if __name__ == '__main__':
     parser.add_argument('--test_dir', action = 'store', dest = 'test_dir', required = True)
     parser.add_argument('--image_store', action = 'store', dest = 'image_store', required = False)
     parser.add_argument('--model_path', action = 'store', dest = 'model_path', required = False)
+    parser.add_argument('--frame_skip', action = 'store', dest = 'frame_skip', required = False)
+    parser.add_argument('--show_video', action = 'store', dest = 'show_video', default = 0, required = False)
+    parser.add_argument('--update_data', action = 'store', dest = 'update_data', default = 0, required = False)
     face_args = parser.parse_args()
     train_dir = face_args.train_dir
     video_path = face_args.video_path
     test_dir = face_args.test_dir
     image_store = face_args.image_store
     model_path = face_args.model_path
-    update_data = False
-    show_video = False
-    frame_skip_number = 100.0
-    resolution = 1080
+    update_data = True if int(face_args.update_data) == 1 else False
+    show_video = True if int(face_args.show_video) == 1 else False
+    frame_skip_number = face_args.frame_skip
+    resolution = None
     
     ob = FaceRecognizer(training_dir = train_dir, test_image_store_location = test_dir, model_path = 'new_recog.model')
     clf = ob.train(image_face_only = True, load_saved_images = True, delete_missing_files = update_data, update_training_data = update_data)
@@ -361,12 +379,12 @@ if __name__ == '__main__':
         files = listdir(video_path)
         for file in files:
             video_file = path.join(video_path, file)
-            if isdir(video_file):
+            if isdir(video_file) or file[0] == '.':
                 continue
+            print("--------------------------------------------")
             ob.predict_in_video(video_file, show_video = show_video, frame_skip_number = frame_skip_number, save_test_frame = True, 
                                 highlight_face = True, scaling = resolution, callback = pred_callback) 
     else:
-        frame_skip_number = 50
         ob.predict_in_video(video_path, show_video = show_video, frame_skip_number = frame_skip_number, save_test_frame = True, 
-                            highlight_face = True, scaling = resolution, callback = pred_callback)
+                            highlight_face = True, scaling = resolution, callback = pred_callback, move_file = False)
     
